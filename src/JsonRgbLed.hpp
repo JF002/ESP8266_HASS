@@ -22,11 +22,12 @@ class JsonRgbLed {
     }
 
     void Apply(const JsonObject& root);
+    void ToJson(JsonObject& rootState) const;
     bool State() const;
-    uint8_t R() { return currentColor.R;}
-    uint8_t G() { return currentColor.G;}
-    uint8_t B() { return currentColor.B; }
-    uint8_t Brightness() { return brightness; }
+    uint8_t R() const { return currentColor.R;}
+    uint8_t G() const { return currentColor.G;}
+    uint8_t B() const { return currentColor.B; }
+    uint8_t Brightness() const { return brightness; }
 
     void Setup();
     bool Loop();
@@ -45,10 +46,5 @@ class JsonRgbLed {
     bool isModified;
     bool firstRun;
 
-
-    void ApplyBrightness();
-    void ApplyEffect(){
-      Serial.println("Effect : " + effect);
-    }
     void ApplyRgb();
 };

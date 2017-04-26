@@ -8,7 +8,6 @@ void JsonRgbLed::Setup() {
 }
 
 void JsonRgbLed::Apply(const JsonObject& root) {
-
   if(root.containsKey("state")) {
     if(root["state"] == "ON") {
       if(state == false) {
@@ -18,7 +17,6 @@ void JsonRgbLed::Apply(const JsonObject& root) {
 
       state = true;
 
-
       if(root.containsKey("brightness")) {
         brightness = root["brightness"];
         current = currentColor;
@@ -26,8 +24,7 @@ void JsonRgbLed::Apply(const JsonObject& root) {
       }
 
       if(root.containsKey("effect")) {
-        this->effect = root["effect"].as<String>();
-        ApplyEffect();
+        //this->effect = root["effect"].as<String>();
       }
 
       if (root.containsKey("color")) {
@@ -45,10 +42,20 @@ void JsonRgbLed::Apply(const JsonObject& root) {
       current = currentColor;
       target = RgbColor(0,0,0);
     }
-
     ApplyRgb();
   }
+}
 
+void JsonRgbLed::ToJson(JsonObject& rootState) const {
+  bool state = this->State();
+  String output;
+  rootState["state"] = state?"ON" : "OFF";
+
+  auto& colorArray = rootState.createNestedObject("color");
+  colorArray["r"] = this->R();
+  colorArray["g"] = this->G();
+  colorArray["b"] = this->B();
+  rootState["brightness"] = this->Brightness();
 }
 
 bool JsonRgbLed::State() const {
@@ -72,13 +79,6 @@ void JsonRgbLed::ApplyRgb() {
   animations->StartAnimation(0, 100, animUpdate);
 }
 
-void JsonRgbLed::ApplyBrightness() {
-  /*
-  strip->SetBrightness(brightness);
-  strip->Show();
-  */
-}
-
 bool JsonRgbLed::Loop() {
   bool ret = isModified;
   isModified = false; // ATOMIC!!!
@@ -93,20 +93,6 @@ bool JsonRgbLed::Loop() {
     animations->UpdateAnimations();
     strip->Show();
   }
-  /*
-  if(ret) {
-    if(state) {
-      RgbColor color(r, g, b);
-      strip->SetBrightness(brightness);
-      strip->SetPixelColor(0, color);
 
-      strip->Show();
-    }
-    else {
-      strip->SetBrightness(0);
-      strip->Show();
-    }
-  }
-  */
   return ret;
 }
