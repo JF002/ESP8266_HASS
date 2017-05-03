@@ -24,7 +24,6 @@ MotionSensor motion;
 
 TemperatureSensor temperature;
 NeoPixelBrightnessBus<::NeoGrbFeature, ::NeoEsp8266BitBang800KbpsMethod> strip(1, 4); // 4 = D2
-//MotionRgbLed motionRgbled(&strip);
 
 JsonRgbLed jsonRgbLed(&strip);
 
@@ -53,23 +52,54 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   }
 }
 
+void stationModeConnectedHandler(const WiFiEventStationModeConnected & event) {
+  Serial.println("onStationModeConnected");
+}
+
+void stationModeDisconnectedHandler(const WiFiEventStationModeDisconnected& event) {
+  Serial.println("onStationModeDisconnected");
+  int status = WiFi.status();
+  Serial.println("Wifi status : " + String(status));
+}
+
+void stationModeAuthModeChangedHandler(const WiFiEventStationModeAuthModeChanged& event) {
+  Serial.println("onStationModeAuthModeChanged");
+}
+
+void stationModeGotIPHandler(const WiFiEventStationModeGotIP& event) {
+  Serial.println("onStationModeGotIP");
+}
+
+WiFiEventHandler stationConnectedHandler_;
+WiFiEventHandler stationDisconnectedHandler_;
+WiFiEventHandler stationModeAuthModeChangedHandler_;
+WiFiEventHandler stationModeGotIPHandler_;
+
 void setup() {
   Serial.begin(921600);
+
+  stationConnectedHandler_ = WiFi.onStationModeConnected(&stationModeConnectedHandler);
+  stationDisconnectedHandler_ = WiFi.onStationModeDisconnected(&stationModeDisconnectedHandler);
+  stationModeAuthModeChangedHandler_ = WiFi.onStationModeAuthModeChanged(&stationModeAuthModeChangedHandler);
+  stationModeGotIPHandler_ = WiFi.onStationModeGotIP(&stationModeGotIPHandler);
 
   Serial.println("Hello!");
   Serial.println("Configuring MotionSensor");
   motion.Setup();
-  Serial.println("Connecting to Wifi...");
 
-  WiFi.mode(WIFI_STA);
-  WiFi.begin("ABCD", "1234");
+  //Serial.println("Connecting to Wifi...");
+
+  //WiFi.mode(WIFI_STA);
+
+  //WiFi.begin("Zataboy-2.4Ghz", "WWJNRZQV");
+  /*WiFi.begin("OpenWrt", "mlkjhgfd");
   while(WiFi. status() != WL_CONNECTED) {
     int status = WiFi.status();
     Serial.println("Wifi status : " + String(status));
     delay(1000);
-  }
+  }*/
 
-  printWifiStatus();
+
   GetUniqueId();
   BuildTopicNames();
 
@@ -82,13 +112,6 @@ void setup() {
   Serial.println("Topic RGBLED command : " + topic_rgbLedCommand);
   Serial.println("Topic Diag - Free Memory : " +topic_diag_freeMemory);
   Serial.println("Topic Diag - Uptime : " + topic_diag_uptime);
-
-
-  Serial.println("Connecting to MQTT borker");
-  client.setServer("192.168.1.109", 1883);
-  client.connect("WemosD1");
-  client.setCallback(mqttCallback);
-  client.subscribe(topic_rgbLedCommand.c_str());
 
   jsonRgbLed.Setup();
   Serial.println("Setup finished");
@@ -126,18 +149,97 @@ void DiagnosticLoop() {
   client.publish(topic_diag_uptime.c_str(), String(uptime).c_str());
 }
 
-void loop() {
-  client.loop();
+void ConnectMqttClient() {
+  Serial.println("Connecting to MQTT borker");
+  client.setServer("192.168.1.109", 1883);
+  client.connect("WemosD1");
+  client.setCallback(mqttCallback);
+  client.subscribe(topic_rgbLedCommand.c_str());
+  DiagnosticLoop();
+}
 
-  RgbLedLoop();
-  MotionLoop();
-
-  if(cpt % 6000 == 0) {
-    TemperatureLoop();
-    DiagnosticLoop();
+bool WifiStateMachine() {
+  static bool isConnecting = false;
+  bool ret = false;
+  switch(WiFi. status()) {
+    case WL_CONNECTED:
+      if(isConnecting) {
+        Serial.println("Wifi connection established");
+        printWifiStatus();
+      }
+      isConnecting = false;
+      ret =  true;
+      break;
+    case WL_IDLE_STATUS:
+      break;
+    case WL_NO_SSID_AVAIL:
+    case WL_CONNECT_FAILED:
+    case WL_DISCONNECTED:
+      if(!isConnecting) {
+        WiFi.mode(WIFI_STA);
+        WiFi.begin("OpenWrt", "mlkjhgfd");
+        isConnecting = true;
+        Serial.println("Connecting to Wifi...");
+      }
+    default:
+      break;
   }
+  return ret;
+}
 
+void MqttClientStateMachine() {
+
+}
+
+void loop() {
+  static bool previousWifiState = false;
+  static bool previousMqttState = false;
+  bool wifiConnected = WifiStateMachine();
+
+  if(previousWifiState != wifiConnected) {
+    if(wifiConnected) {
+      Serial.println("Wifi is now Connected");
+    }
+    else {
+      Serial.println("Wifi is now Disconnected");
+    }
+  }
+  previousWifiState = wifiConnected;
+
+  if(wifiConnected) {
+    bool mqttConnected = client.connected();    
+    if(previousMqttState != mqttConnected) {
+      if(mqttConnected) {
+        Serial.println("MQTT is now Connected");
+      }
+      else {
+        Serial.println("MQTT is now Disconnected");
+      }
+    }
+    previousMqttState = mqttConnected;
+
+
+    if(!mqttConnected) {
+      if(cpt % 500 == 0) {
+        ConnectMqttClient();
+      }
+    }
+
+    if(mqttConnected) {
+      client.loop();
+
+      RgbLedLoop();
+      MotionLoop();
+
+      if(cpt % 600 == 0) {
+        TemperatureLoop();
+        DiagnosticLoop();
+      }
+    }
+  }
   cpt++;
+
+
 
   delay(10);
 }
